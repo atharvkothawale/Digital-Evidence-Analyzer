@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEFA — Digital Evidence Forensics & Investigation System</title>
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+
+  <!-- ──────────────────────────────────────────────
+       Sidebar Navigation
+       ────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-badge">DEFA</div>
+      <div>
+        <div class="logo-title">DEFA Forensics</div>
+        <div class="logo-subtitle">Investigation System</div>
+      </div>
+    </div>
+
+    <ul class="sidebar-nav">
+      <li class="nav-item">
+        <a href="#overview" class="nav-link active" data-tab="overview">
+          <span class="nav-icon">📊</span> Overview
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#files" class="nav-link" data-tab="files">
+          <span class="nav-icon">📁</span> Evidence Explorer
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#findings" class="nav-link" data-tab="findings">
+          <span class="nav-icon">🔍</span> Forensic Findings
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#duplicates" class="nav-link" data-tab="duplicates">
+          <span class="nav-icon">🔁</span> Duplicate Analysis
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#verification" class="nav-link" data-tab="verification">
+          <span class="nav-icon">🔐</span> Baseline Verification
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#reports" class="nav-link" data-tab="reports">
+          <span class="nav-icon">📑</span> Investigation Reports
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#ai" class="nav-link" data-tab="ai">
+          <span class="nav-icon">🤖</span> AI Assistant
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#benchmark" class="nav-link" data-tab="benchmark">
+          <span class="nav-icon">🌐</span> Datasets & Benchmark
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#history" class="nav-link" data-tab="history">
+          <span class="nav-icon">⏱️</span> Scan History
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="#settings" class="nav-link" data-tab="settings">
+          <span class="nav-icon">⚙️</span> Settings
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <div class="privacy-pill">
+        <span>🛡️</span>
+        <span>Local Forensics Only</span>
+      </div>
+      <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.4rem; text-align: center;" id="app-version-badge">
+        v2.0.0
+      </div>
+    </div>
+  </aside>
+
+  <!-- ──────────────────────────────────────────────
+       Main Application Area
+       ────────────────────────────────────────────── -->
+  <main class="main-wrapper">
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="dir-indicator" id="top-dir-indicator" title="Current target directory">
+        📁 No active scan
+      </div>
+      <div class="top-actions">
+        <div class="status-badge" id="top-ai-badge">
+          <span class="status-dot offline" id="ai-status-dot"></span>
+          <span id="ai-status-text">AI Offline</span>
+        </div>
+        <button class="btn-primary" id="btn-open-scan-modal">
+          <span>🔍</span> Scan Evidence
+        </button>
+      </div>
+    </header>
+
+    <!-- Content Views -->
+    <div class="content-area">
+
+      <!-- ── TAB 1: OVERVIEW ────────────────────────── -->
+      <section id="tab-overview" class="tab-pane active">
+        <div class="page-title-row">
+          <div>
+            <h1 class="page-title">Evidence Examination Dashboard</h1>
+            <p class="page-subtitle">Real-time cryptographic hash verification, metadata catalog, and anomaly detection.</p>
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <a href="/api/export/pdf" download class="btn-primary" style="text-decoration: none;">Download PDF Report</a>
+            <a href="/api/export/json" download class="btn-secondary" style="text-decoration: none;">JSON</a>
+            <a href="/api/export/csv" download class="btn-secondary" style="text-decoration: none;">CSV</a>
+          </div>
+        </div>
+
+        <div id="overview-empty-state" style="display: none;" class="panel">
+          <div style="text-align: center; padding: 2rem;">
+            <h3>No Evidence Loaded</h3>
+            <p class="text-muted" style="margin: 0.5rem 0 1rem 0;">Click 'Scan Evidence' to analyze an evidence directory.</p>
+            <button class="btn-primary" onclick="document.getElementById('scan-modal').classList.add('active')">Scan Evidence Now</button>
+          </div>
+        </div>
+
+        <div id="overview-content">
+          <!-- Stat Grid -->
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="stat-card-title">Files Analyzed</div>
+              <div class="stat-card-value" id="metric-total-files">0</div>
+              <div class="stat-card-sub" id="metric-folders-sub">0 folders traversed</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-title">Evidence Volume</div>
+              <div class="stat-card-value" id="metric-total-size" style="color: var(--accent-blue);">0 B</div>
+              <div class="stat-card-sub" id="metric-throughput-sub">0 MB/s throughput</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-title">Hashed (SHA-256)</div>
+              <div class="stat-card-value" id="metric-hashed-ok" style="color: var(--accent-green);">0</div>
+              <div class="stat-card-sub">Integrity verified</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-title">Failed / Inaccessible</div>
+              <div class="stat-card-value" id="metric-failed" style="color: var(--accent-red);">0</div>
+              <div class="stat-card-sub">Permission or I/O blocks</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-title">Duplicate Groups</div>
+              <div class="stat-card-value" id="metric-dup-groups" style="color: var(--accent-amber);">0</div>
+              <div class="stat-card-sub" id="metric-dup-files-sub">0 identical files</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-title">Forensic Findings</div>
+              <div class="stat-card-value" id="metric-findings-count" style="color: var(--accent-purple);">0</div>
+              <div class="stat-card-sub" id="metric-findings-high-sub">0 high severity</div>
+            </div>
+          </div>
+
+          <!-- Forensic Distinction Callout -->
+          <div class="callout callout-info">
+            <span>🛡️</span>
+            <div>
+              <strong>Forensic Distinction & Integrity Assurance:</strong>
+              Every calculation is derived strictly from real physical disk analysis using Python's standard <code>hashlib</code> and <code>pathlib</code>. Original evidence files are accessed in binary read-only mode and are <strong>never modified, moved, or deleted</strong>.
+            </div>
+          </div>
+
+          <!-- Charts Row -->
+          <div class="grid-2col">
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">📂 File Extension Distribution</span>
+              </div>
+              <div id="ext-chart-container"></div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">📊 File Size Categories</span>
+              </div>
+              <div id="size-dist-container"></div>
+            </div>
+          </div>
+
+          <!-- Largest Files Panel -->
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">⚖️ Top 5 Largest Evidence Files</span>
+              <span style="font-size: 0.8rem; color: var(--text-muted);">Click row to inspect</span>
+            </div>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Relative Path</th>
+                    <th>Size</th>
+                    <th>SHA-256 Digest</th>
+                  </tr>
+                </thead>
+                <tbody id="largest-files-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── TAB 2: EVIDENCE EXPLORER ───────────────── -->
+      <section id="tab-files" class="tab-pane">
+        <div class="page-title-row">
+          <div>
+            <h1 class="page-title">Evidence File Explorer</h1>
+            <p class="page-subtitle">Search, filter, and inspect file metadata, cryptographic signatures, and duplicate statuses.</p>
+          </div>
+          <span class="badge badge-neutral" id="files-count-badge">Loading files...</span>
+        </div>
+
+        <!-- Filter Toolbar -->
+        <div class="toolbar">
+          <input type="text" id="file-search-input" class="search-input" placeholder="🔍 Search by name or relative path...">
+          
+          <select id="file-category-select" class="select-input">
+            <option value="all">All Categories</option>
+            <option value="documents">Documents (.txt, .md, .csv, .json, .pdf)</option>
+            <option value="code">Code & Scripts (.py, .js, .bat, .ps1)</option>
+            <option value="images">Images (.png, .jpg)</option>
+            <option value="logs">Logs (.log, .audit)</option>
+            <option value="other">Other Formats</option>
+          </select>
+
+          <select id="file-size-select" class="select-input">
+            <option value="all">All Sizes</option>
+            <option value="tiny">&lt; 10 KB (Tiny)</option>
+            <option value="small">10 KB - 1 MB (Small)</option>
+            <option value="medium">1 MB - 50 MB (Medium)</option>
+            <option value="large">&gt; 50 MB (Large)</option>
+          </select>
+
+          <select id="file-status-select" class="select-input">
+            <option value="all">All Statuses</option>
+            <option value="hashed">Hashed OK</option>
+            <option value="hash_failed">Hash Failed / Inaccessible</option>
+          </select>
+
+          <select id="file-sort-select" class="select-input">
+            <option value="name:asc">Name (A &rarr; Z)</option>
+            <option value="name:desc">Name (Z &rarr; A)</option>
+            <option value="size:desc">Size (Largest first)</option>
+            <option value="size:asc">Size (Smallest first)</option>
+            <option value="modified:desc">Modified (Newest)</option>
+            <option value="modified:asc">Modified (Oldest)</option>
+          </select>
+
+          <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; cursor: pointer; color: var(--text-main);">
+            <input type="checkbox" id="file-duplicate-toggle"> Only Duplicates
+          </label>
+        </div>
+
+        <!-- File Table -->
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 70px;">Type</th>
+                <th>Evidence File / Relative Path</th>
+                <th style="width: 100px;">Size</th>
+                <th style="width: 220px;">SHA-256 Digest</th>
+                <th style="width: 170px;">Modified (UTC)</th>
+                <th style="width: 130px;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="files-table-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── TAB 3: FORENSIC FINDINGS ───────────────── -->
+      <section id="tab-findings" class="tab-pane">
+        <div class="page-title-row">
+          <div>
+            <h1 class="page-title">Forensic Findings & Anomaly Detection</h1>
+            <p class="page-subtitle">Algorithmic indicators including duplicate clusters, deceptive filenames, signature mismatches, and baseline deviations.</p>
+          </div>
+          <div style="display: flex; gap: 0.4rem;">
+            <button class="btn-secondary" onclick="filterFindings('all')">All</button>
+            <button class="btn-secondary" onclick="filterFindings('High')" style="color: var(--accent-red);">High</button>
+            <button class="btn-secondary" onclick="filterFindings('Medium')" style="color: var(--accent-amber);">Medium</button>
+            <button class="btn-secondary" onclick="filterFindings('Low')" style="color: var(--accent-blue);">Low</button>
+            <button class="btn-secondary" onclick="filterFindings('Informational')">Info</button>
+          </div>
+        </div>
+
+        <div class="callout callout-warning">
+          <span>⚖️</span>
+          <div>
+            <strong>Investigative Leads Notice:</strong>
+            Findings are prioritized investigative leads derived from factual metadata and binary signatures. They represent anomalies requiring verification, not definitive conclusions of malicious activity.
+          </div>
+        </div>
+
+        <div id="findings-cards-container">
+          <!-- Populated by JS -->
+        </div>
+      </section>
+
+      <!-- ── TAB 4: DUPLICATE ANALYSIS ──────────────── -->
+      <section id="tab-duplicates" class="tab-pane">
+        <div class="page-title-row">
+          <div>
+            <h1 class="page-title">Duplicate Evidence Investigation</h1>
+            <p class="page-subtitle">Files grouped strictly by exact cryptographic SHA-256 match regardless of path or filename.</p>
+          </div>
+        </div>
+
+        <div class="stat-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="stat-card">
+            <div class="stat-card-title">Duplicate Groups</div>
+            <div class="stat-card-value" id="dup-total-groups" style="color: var(--accent-amber);">0</div>
+            <div class="stat-card-sub">Distinct shared hash clusters</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-title">Duplicate Files</div>
+            <div class="stat-card-value" id="dup-total-files" style="color: var(--accent-amber);">0</div>
+            <div class="stat-card-sub">Total redundant files</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card-title">Estimated Wasted Space</div>
+            <div class="stat-card-value" id="dup-wasted-space" style="color: var(--accent-blue);">0 B</div>
+            <div class="stat-card-sub">Redundant storage volume</div>
+          </div>
+        </div>
+
+        <div id="duplicates-container"></div>
+      </section>
+
+      <!-- ── TAB 5: BASELINE VERIFICATION ───────────── -->
+      <section id="tab-verification" class="tab-pane">
+        <div class="page-title-row">
+          <div>
+            <h1 class="page-title">Baseline Integrity Verification</h1>
+            <p class="page-subtitle">Compare current evidence state against a previously established cryptographic baseline.</p>
+          </div>
+        </div>
+
+        <!-- Verification Controller -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Execute Integrity Check</span>
+          </div>
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+            <input type="text" id="verify-dir-input" class="search-input" style="flex: 1;" placeholder="Directory to verify (e.g. ./sample_data)" value="./sample_data">
+            <input type="text" id="verify-baseline-input" class="search-input" style="flex: 1;" placeholder="Baseline JSON (e.g. reports/baseline.json)" value="reports/baseline.json">
+            <button class="btn-primary" id="btn-run-verify">Run Verification</button>
+          </div>
+        </div>
+
+        <div id="verify-empty-state" class="panel" style="text-align: center; padding: 2rem;">
+          <p class="text-muted">No verification results available. Run a verification above to inspect changes.</p>
+        </div>
+
+        <div id="verify-results-content" style="display: none;">
+          <div id="verif-status-banner" class="callout callout-info"></div>
+
+          <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="stat-card">
+              <div class="stat-card-title">Unchanged</div>
+              <div class="stat-card-value" id="verif-unchanged-count" style="color: var(--accent-green);">0</div>
+              <div class="stat-card-sub">Exact hash match</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-title">New Files</div>
+              <div class="stat-card-value" id="verif-new-count" style="color: var(--accent-blue);">0</div>
+              <div class="stat-card-sub">Introduced post-baseline</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-title">Missing Files</div>
+              <div class="stat-card-value" id="verif-missing-count" style="color: var(--accent-red);">0</div>
+              <div class="stat-card-sub">In baseline, missing now</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-title">Modified Files</div>
+              <div class="stat-card-value" id="verif-modified-count" style="color: var(--accent-amber);">0</div>
+              <div class="stat-card-sub">Cryptographic deviation</div>
+            </div>
+          </div>
+
+          <!-- Modified Files Table -->
+          <div id="verif-modified-section" class="panel" style="display: none;">
+            <div class="panel-header">
+              <span class="panel-title" style="color: var(--accent-amber);">⚠️ Modified Files (Diverging SHA-256)</span>
+            </div>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Relative Path</th>
+                    <th>SHA-256 Deviation</th>
+                    <th>Size Delta</th>
+                  </tr>
+                </thead>
+                <tbody id="verif-modified-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- New & Missing side-by-side -->
+          <div class="grid-2col">
+            <div id="verif-new-section" class="panel" style="display: none;">
+              <div class="panel-header">
+                <span class="panel-title" style="color: var(--accent-blue);">➕ New Files Detected</span>
+              </div>
+              <div id="verif-new-container"></div>
+            </div>
+
+            <div id="verif-missing-section" class="panel" style="display: none;">
+              <div class="panel-header">
+                <span class="panel-title" style="color: var(--accent-red);">➖ Missing Files (Deleted)</span>
+              </div>
+              <div id="verif-missing-container"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── TAB 6: INVESTIGATION REPORTS ───────────── -->
+      <section id="tab-reports" class="tab-pane">
+        <div class="page-title-row">
+          <div>
+            <h1 class="page-title">Investigation Reports Export</h1>
+            <p class="page-subtitle">Generate court-ready, multi-format forensic reports documenting methodology, hashes, and findings.</p>
+          </div>
+        </div>
+
+        <div class="panel" style="max-width: 680px;">
+          <div class="panel-header">
+            <span class="panel-title">Report Metadata Configuration</span>
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.35rem; color: var(--text-muted);">Case Name / Number:</label>
+            <input type="text" id="report-case-name" class="search-input" style="width: 100%;" value="CASE-2026-DEMO-001">
+          </div>
+          <div style="margin-bottom: 1.25rem;">
+            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.35rem; color: var(--text-muted);">Lead Examiner / Investigator:</label>
+            <input type="text" id="report-investigator" class="search-input" style="width: 100%;" value="Digital Forensic Examiner">
+          </div>
+
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button class="btn-primary" onclick="downloadCustomPdf()">📄 Export Official PDF Report</button>
+            <a href="/api/export/json" download class="btn-secondary" style="text-decoration: none;">Export JSON Report</a>
+            <a href="/api/export/csv" download class="btn-secondary" style="text-decoration: none;">Export CSV File Inventory</a>
+            <a href="/api/export/html" download class="btn-secondary" style="text-decoration: none;">Printable HTML Dashboard</a>
+          </div>
+        </div>
+
+        <div class="panel" style="max-width: 680px;">
+          <div class="panel-header">
+            <span class="panel-title">Report Sections Included</span>
+          </div>
+          <ul style="font-size: 0.85rem; line-height: 1.8; color: var(--text-muted); margin-left: 1.2rem;">
+            <li>Case Identification & Lead Investigator Credentials</li>
+            <li>Evidence Root Directory & Acquisition Timestamp</li>
+            <li>Cryptographic Hash Algorithm Standards (NIST FIPS 180-4 SHA-256)</li>
+            <li>Evidence Volume, Total Files & Subdirectories Count</li>
+            <li>Prioritized Forensic Findings & Anomaly Disclosures</li>
+            <li>Cryptographic Duplicate Evidence Analysis</li>
+            <li>Baseline Integrity Verification Outcomes</li>
+            <li>Forensic Preservation & Legal Non-Destruction Disclaimer</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ── TAB 7: AI ASSISTANT ────────────────────── -->
+      <section id="tab-ai" class="tab-pane">
+        <div class="page-title-row">
+          <div>
+            <h1 class="page-title">Local AI Forensic Assistant</h1>
+            <p class="page-subtitle">Natural language analysis grounded in verified scan data using locally hosted Ollama. Zero cloud telemetry.</p>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <label style="font-size: 0.82rem; color: var(--text-muted);">Model:</label>
+            <select id="ai-model-select" class="select-input" style="min-width: 140px;">
+              <option value="llama3.2">llama3.2</option>
+              <option value="mistral">mistral</option>
+              <option value="phi3">phi3</option>
+            </select>
+            <button class="btn-secondary" id="btn-chat-clear">Clear Chat</button>
+          </div>
+        </div>
+
+        <div class="callout callout-info">
+          <span>🔒</span>
+          <div>
+            <strong>Forensic Evidence Privacy:</strong>
+            The AI assistant receives <strong>investigation metadata only</strong>. Raw file contents are never read or transmitted.
+          </div>
+        </div>
+
+        <div id="ai-offline-notice" class="callout callout-warning" style="display: none;">
+          <span>⚙️</span>
+          <div>
+            <strong>Ollama is not running locally.</strong>
+            To enable the AI assistant:
+            <ol style="margin: 0.4rem 0 0.4rem 1.2rem; font-size: 0.85rem;">
+              <li>Install Ollama from <a href="https://ollama.com" target="_blank" style="color: var(--accent-blue);">https://ollama.com</a></li>
+              <li>Pull model: <code>ollama pull llama3.2</code></li>
+              <li>Start daemon: <code>ollama serve</code></li>
+            </ol>
+            <button class="btn-secondary" style="margin-top: 0.4rem;" onclick="checkAIStatus()">Check Connection Again</button>
+          </div>
+        </div>
+
+        <!-- Chat Box -->
+        <div class="chat-container">
+          <div class="chat-header">
+            <span style="font-size: 0.85rem; font-weight: 600;">Investigative Query Stream</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Tool Grounded: Real Evidence Data Active</span>
+          </div>
+
+          <div class="chat-messages" id="chat-messages">
+            <div class="chat-bubble assistant">
+              <strong>DEFA Local Forensic AI Assistant</strong><br>
+              I am connected to the active evidence scan metadata and findings engine. Ask questions regarding evidence volume, duplicate file clusters, anomalous extensions, or baseline deviations.
+            </div>
+          </div>
+
+          <!-- Suggested prompts -->
+          <div class="chat-suggestions">
+            <button class="prompt-chip" data-prompt="Summarize this evidence collection in an executive forensic summary.">Summarize evidence</button>
+            <button class="prompt-chip" data-prompt="What are the most important forensic findings and suspicious indicators?">Key findings</button>
+            <button class="prompt-chip" data-prompt="Which files have duplicate hashes and what storage do they consume?">Duplicate analysis</button>
+            <button class="prompt-chip" data-prompt="Show the largest evidence files and their SHA-256 hashes.">Largest files</button>
+            <button class="prompt-chip" data-prompt="Which files should I investigate first based on severity?">Investigative priorities</button>
+          </div>
+
+          <div class="chat-input-bar">
+            <textarea id="chat-input-text" class="chat-textarea" placeholder="Ask an investigative question... (Press Enter to send)"></textarea>
+            <button class="btn-primary" id="btn-chat-send">Send</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── TAB 8: DATASETS & BENCHMARK ────────────── -->
+      <section id="tab-benchmark" class="tab-pane">
+        <div class="page-title-row">
+          <div>
+            <h1 class="page-title">Public Forensic Datasets & Validation Benchmark</h1>
+            <p class="page-subtitle">Practical guidance for analyzing real-world public corpora and automated scientific benchmarking.</p>
+          </div>
+        </div>
+
+        <!-- Benchmark Runner Panel -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">🔬 Automated 12-Step Forensic Validation Benchmark</span>
+            <button class="btn-primary" id="btn-run-benchmark" onclick="executeBenchmark()">Run Automated Benchmark</button>
+          </div>
+          <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 1rem;">
+            Executes a complete 12-step validation test: creates temporary synthetic evidence, computes chunk-based SHA-256 hashes, saves a baseline, introduces modifications, additions, and deletions, and verifies that DEFA detects all variations with 100% precision.
+          </p>
+
+          <div id="benchmark-results-container" style="display: none;">
+            <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr);">
+              <div class="stat-card">
+                <div class="stat-card-title">Accuracy</div>
+                <div class="stat-card-value" id="bench-accuracy" style="color: var(--accent-green);">100%</div>
+                <div class="stat-card-sub">Exact detection match</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-card-title">Scan Throughput</div>
+                <div class="stat-card-value" id="bench-throughput" style="color: var(--accent-blue);">0 MB/s</div>
+                <div class="stat-card-sub" id="bench-files-sec">0 files/sec</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-card-title">Hashing Time</div>
+                <div class="stat-card-value" id="bench-hashing-time">0s</div>
+                <div class="stat-card-sub">Cryptographic duration</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-card-title">Total Duration</div>
+                <div class="stat-card-value" id="bench-total-time">0s</div>
+                <div class="stat-card-sub">Full 12-step cycle</div>
+              </div>
+            </div>
+
+            <div class="table-container" style="margin-top: 1rem;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Step #</th>
+                    <th>Validation Step Description</th>
+                    <th>Result</th>
+                  </tr>
+                </thead>
+                <tbody id="benchmark-steps-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Public Forensic Datasets Guide -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">🌐 Recommended Public Forensic Evidence Datasets</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div class="stat-card" style="text-align: left;">
+              <strong style="color: var(--accent-blue);">NIST CFReDS</strong>
+              <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0.4rem 0;">National Institute of Standards & Technology forensic reference datasets.</p>
+              <a href="https://cfreds-archive.nist.gov/" target="_blank" style="color: var(--accent-blue); font-size: 0.8rem;">Visit cfreds-archive.nist.gov &rarr;</a>
+            </div>
+            <div class="stat-card" style="text-align: left;">
+              <strong style="color: var(--accent-green);">Digital Corpora</strong>
+              <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0.4rem 0;">Govdocs1, m57-patents, real-world disk images and email archives.</p>
+              <a href="https://digitalcorpora.org/" target="_blank" style="color: var(--accent-green); font-size: 0.8rem;">Visit digitalcorpora.org &rarr;</a>
+            </div>
+            <div class="stat-card" style="text-align: left;">
+              <strong style="color: var(--accent-amber);">DFIR Toolkit</strong>
+              <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0.4rem 0;">Incident response case studies, malware PCAPs, memory dumps.</p>
+              <a href="https://dfir-toolkit.github.io/index.html" target="_blank" style="color: var(--accent-amber); font-size: 0.8rem;">Visit dfir-toolkit.github.io &rarr;</a>
+            </div>
+            <div class="stat-card" style="text-align: left;">
+              <strong style="color: var(--accent-purple);">Forensic Case Challenges</strong>
+              <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0.4rem 0;">Practical hands-on scenario datasets (insider threat, USB exfiltration).</p>
+              <a href="https://www.ahmedalzaidy.com/datasets/" target="_blank" style="color: var(--accent-purple); font-size: 0.8rem;">Visit ahmedalzaidy.com/datasets &rarr;</a>
+            </div>
+          </div>
+
+          <div class="callout callout-info">
+            <span>ℹ️</span>
+            <div>
+              <strong>Analyzing Disk Images (E01, RAW, DD):</strong>
+              DEFA operates on accessible directories and files. To analyze an E01 or DD bitstream image, mount or extract it read-only using <strong>7-Zip</strong> or <strong>FTK Imager</strong>, then enter the extracted directory into DEFA. See <a href="/PUBLIC_DATASET_TESTING.md" target="_blank" style="color: var(--accent-blue);">PUBLIC_DATASET_TESTING.md</a> for complete instructions.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── TAB 9: SCAN HISTORY ────────────────────── -->
+      <section id="tab-history" class="tab-pane">
+        <div class="page-title-row">
+          <div>
+            <h1 class="page-title">Scan History & Audit Trail</h1>
+            <p class="page-subtitle">Chronological record of past directory scans and forensic assessments.</p>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp (UTC)</th>
+                <th>Target Directory</th>
+                <th>Total Files</th>
+                <th>Duplicates</th>
+                <th>Total Volume</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="history-table-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── TAB 10: SETTINGS ───────────────────────── -->
+      <section id="tab-settings" class="tab-pane">
+        <div class="page-title-row">
+          <div>
+            <h1 class="page-title">Application Settings</h1>
+            <p class="page-subtitle">Configure local Ollama AI endpoints, storage paths, and interface preferences.</p>
+          </div>
+        </div>
+
+        <div class="panel" style="max-width: 680px;">
+          <div class="panel-header">
+            <span class="panel-title">Local Ollama Integration</span>
+          </div>
+          
+          <div style="margin-bottom: 1.25rem;">
+            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.4rem; color: var(--text-muted);">Ollama API URL</label>
+            <input type="text" id="setting-ollama-url" class="search-input" style="width: 100%;" value="http://localhost:11434">
+          </div>
+
+          <div style="margin-bottom: 1.25rem;">
+            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.4rem; color: var(--text-muted);">Default AI Model</label>
+            <input type="text" id="setting-default-model" class="search-input" style="width: 100%;" value="llama3.2">
+          </div>
+
+          <div style="margin-bottom: 1.5rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; cursor: pointer;">
+              <input type="checkbox" id="setting-ai-enabled" checked>
+              <span>Enable Local AI Forensic Assistant</span>
+            </label>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <button class="btn-primary" id="btn-save-settings">Save Settings</button>
+            <button class="btn-secondary" id="btn-test-ollama">Test Connection</button>
+            <span id="ollama-test-result" style="font-size: 0.85rem; margin-left: 0.5rem;"></span>
+          </div>
+        </div>
+
+        <div class="panel" style="max-width: 680px;">
+          <div class="panel-header">
+            <span class="panel-title">About DEFA</span>
+          </div>
+          <div style="font-size: 0.85rem; line-height: 1.7; color: var(--text-muted);">
+            <div><strong>Product:</strong> Digital Evidence Forensics & Investigation System (DEFA)</div>
+            <div><strong>Version:</strong> 2.0.0</div>
+            <div><strong>Backend:</strong> Python 3.11+ / FastAPI / pathlib / hashlib / csv / json</div>
+            <div><strong>AI Engine:</strong> Local Ollama REST API (No Cloud Dependencies)</div>
+            <div><strong>Integrity Standard:</strong> NIST FIPS 180-4 (SHA-256)</div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ──────────────────────────────────────────────
+       Modals
+       ────────────────────────────────────────────── -->
+
+  <!-- File Detail Modal -->
+  <div class="modal-backdrop" id="file-detail-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title" id="modal-file-name">Evidence File Detail</span>
+        <button class="modal-close" id="btn-close-detail-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-row">
+          <span class="detail-label">Relative Path:</span>
+          <span class="detail-value mono" id="modal-rel-path"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">File Size:</span>
+          <span class="detail-value mono" id="modal-size"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">SHA-256 Hash:</span>
+          <div class="detail-value mono" style="display: flex; align-items: center; gap: 0.5rem;">
+            <span id="modal-sha256" style="color: var(--accent-blue); word-break: break-all;"></span>
+            <button class="copy-btn" id="btn-modal-copy-hash" title="Copy Hash">📋</button>
+          </div>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Created (UTC):</span>
+          <span class="detail-value mono" id="modal-created"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Modified (UTC):</span>
+          <span class="detail-value mono" id="modal-modified"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Scan Status:</span>
+          <span class="detail-value" id="modal-status"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Absolute Path:</span>
+          <span class="detail-value mono" id="modal-abs-path" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+        </div>
+
+        <div style="margin-top: 1rem;">
+          <h4 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.35rem;">Duplicate Analysis:</h4>
+          <div id="modal-duplicate-info"></div>
+        </div>
+
+        <div style="margin-top: 1rem;">
+          <h4 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.35rem;">Associated Forensic Findings:</h4>
+          <div id="modal-findings-info"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scan Modal -->
+  <div class="modal-backdrop" id="scan-modal">
+    <div class="modal-box" style="max-width: 520px;">
+      <div class="modal-header">
+        <span class="modal-title">Select Evidence Directory</span>
+        <button class="modal-close" id="btn-close-scan-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+          Enter the relative or absolute path of the target evidence folder. All files will be cataloged, hashed, and checked for anomalies without modifying original evidence.
+        </p>
+
+        <div style="margin-bottom: 1rem;">
+          <label style="display: block; font-size: 0.85rem; margin-bottom: 0.4rem; color: var(--text-muted);">Directory Path:</label>
+          <input type="text" id="scan-dir-input" class="search-input" style="width: 100%;" placeholder="./sample_data" value="./sample_data">
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem;">
+          <button class="btn-secondary" id="btn-preset-sample">Use Sample Data</button>
+          <button class="btn-primary" id="btn-start-scan">Start Forensic Scan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

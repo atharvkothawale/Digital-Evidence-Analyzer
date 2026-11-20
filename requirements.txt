@@ -1,0 +1,17 @@
+# DEFA 2.0 — Digital Evidence File Analyzer
+
+# ──────────────────────────────────────────────
+# CORE ENGINE:
+# The core scanning, hashing, duplicate detection, and integrity
+# verification modules run purely on Python 3.11+ standard library:
+#   - pathlib, hashlib, argparse, json, csv, datetime, logging
+#
+# INTERACTIVE WEB DASHBOARD & REST API:
+# DEFA 2.0 introduces an interactive web dashboard:
+# ──────────────────────────────────────────────
+fastapi>=0.100.0
+uvicorn>=0.20.0
+pydantic>=2.0.0
+
+# Optional testing framework:
+pytest>=7.0.0
