@@ -7,7 +7,17 @@ from pydantic import BaseModel, Field
 
 
 class ScanRequest(BaseModel):
-    directory: str = Field(..., description="Directory path to scan")
+    directory: str | None = Field(default=None, description="Directory path to scan")
+    items: list[str] | None = Field(default=None, description="List of dynamic files or folders to scan")
+    output_dir: str = Field(default="reports", description="Output folder for reports")
+
+
+class EvidencePreviewRequest(BaseModel):
+    items: list[str] = Field(..., description="List of file or directory paths to inspect")
+
+
+class InvestigateRequest(BaseModel):
+    items: list[str] = Field(..., description="List of file or directory paths to investigate")
     output_dir: str = Field(default="reports", description="Output folder for reports")
 
 
@@ -38,4 +48,3 @@ class SettingsModel(BaseModel):
 class CompareRequest(BaseModel):
     older_id: str
     newer_id: str
-

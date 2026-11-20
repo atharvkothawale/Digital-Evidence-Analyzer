@@ -63,6 +63,7 @@ def save_json_report(
     findings: list[dict[str, Any]] | None = None,
     performance_metrics: dict[str, Any] | None = None,
     total_folders: int = 0,
+    selected_paths: list[str] | None = None,
 ) -> Path:
     """
     Write a full forensic scan report to a JSON file.
@@ -98,6 +99,7 @@ def save_json_report(
         "version": "2.0.0",
         "scanned_at": _now_utc(),
         "directory": str(directory),
+        "selected_paths": selected_paths or [str(directory)],
         "total_files": len(file_records),
         "total_folders": total_folders,
         "hashed_successfully": sum(1 for r in file_records if r.get("sha256")),

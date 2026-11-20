@@ -9,6 +9,7 @@
 
 | Capability | DEFA 1.0 (Basic CLI) | DEFA 2.0 (Forensic Workstation) |
 |---|---|---|
+| **Evidence Selection** | Hardcoded `./sample_data` only | **Dynamic Evidence Selection**: Native OS folder & multi-file pickers, arbitrary folders/files, mixed selections, automatic overlap deduplication |
 | **Interface** | Terminal CLI only | Modern Dark Graphite Web Dashboard + Full CLI |
 | **Evidence Explorer** | Summary text in terminal | Interactive File Explorer with search, category filtering, size buckets, and slide-out inspection modal |
 | **Cryptographic Hashing** | 64 KB chunk SHA-256 | High-throughput 64 KB chunk SHA-256 with duration and MB/s throughput metrics |
@@ -20,7 +21,7 @@
 | **Public Dataset Testing** | None | Dedicated testing guide and support for real public forensic datasets (NIST CFReDS, Digital Corpora) |
 | **Scan History** | None (overwrote previous report) | Audit trail of all past scans with historical delta comparisons |
 | **AI Assistant** | None | 100% Local AI Forensic Assistant via Ollama with **tool-grounded query execution** (zero cloud uploads) |
-| **Automated Testing** | 38 unit tests | **81 automated unit tests (100% passing)** across 9 test modules |
+| **Automated Testing** | 38 unit tests | **99 automated unit tests (100% passing)** across 10 test modules |
 
 ---
 
@@ -242,13 +243,14 @@ DEFA 2.0 features an embedded local AI assistant that answers questions using **
 
 ## 🧪 Automated Testing
 
-DEFA 2.0 features **81 comprehensive automated tests** across 9 test modules:
+DEFA 2.0 features **99 comprehensive automated tests** across 10 test modules:
 
 ```bash
 python -m pytest tests/ -v
 ```
 
 ### Test Suite Breakdown:
+- `test_dynamic_selection.py` (12 tests): Single file, multiple files, single folder, nested folders, multiple folders, mixed files/folders, overlapping selection deduplication, empty folders, large file chunking, inspection previews, InvestigationManager background thread execution.
 - `test_scanner.py` (11 tests): Recursive directory walking, nested subdirectories, empty directories, extension normalization, file size accuracy, permission error handling.
 - `test_hasher.py` (7 tests): Known NIST hashes, empty file digest, chunk-based large file hashing, missing file handling, 64-char hex format validation.
 - `test_duplicates.py` (8 tests): Multi-file duplicate grouping, unique hash handling, None-hash filtering, empty list handling.
@@ -258,7 +260,7 @@ python -m pytest tests/ -v
 - `test_pdf_report.py` (3 tests): Pure-Python PDF 1.4 structure, string escaping, header/trailer conformance.
 - `test_history.py` (3 tests): History persistence, chronological sorting, historical scan delta comparisons.
 - `test_ai.py` (9 tests): Offline connection handling, Ollama status reporting, context prompt builder, safety filters, mocked AI responses.
-- `test_api.py` (16 tests): FastAPI REST endpoints, directory validation, file filters and sorting, duplicate reporting, findings API, benchmark endpoint, PDF export, history APIs, settings updates.
+- `test_api.py` (21 tests): FastAPI REST endpoints, native dialog triggers, evidence preview API, background investigation start & progress polling, directory validation, file filters, duplicate reporting, findings API, benchmark endpoint, PDF export, history APIs, settings updates.
 
 ---
 

@@ -40,6 +40,8 @@ from defa.ai.tools import (
 from defa.api.schemas import (
     ChatRequest,
     CompareRequest,
+    EvidencePreviewRequest,
+    InvestigateRequest,
     ScanRequest,
     SettingsModel,
     VerifyRequest,
@@ -49,6 +51,11 @@ from defa.duplicates import find_duplicates
 from defa.findings import generate_forensic_findings
 from defa.hasher import compute_sha256
 from defa.history import compare_scans, load_history, record_scan_history
+from defa.investigation import (
+    investigation_manager,
+    open_native_files_dialog,
+    open_native_folder_dialog,
+)
 from defa.pdf_report import generate_pdf_report
 from defa.reporter import (
     save_baseline,
@@ -56,7 +63,13 @@ from defa.reporter import (
     save_json_report,
     save_verification_report,
 )
-from defa.scanner import count_directories, scan_directory
+from defa.scanner import (
+    count_directories,
+    count_selected_directories,
+    inspect_evidence_selection,
+    scan_directory,
+    scan_evidence_selection,
+)
 from defa.verifier import compare_with_baseline, load_baseline
 
 logger = logging.getLogger("defa.api")
@@ -131,29 +144,111 @@ def get_health():
 
 
 # ──────────────────────────────────────────────
-# Scanning & Reports
+# Dynamic Evidence Selection & Dialogs
+# ──────────────────────────────────────────────
+
+@app.post("/api/dialog/folder")
+def select_folder_dialog():
+    """Trigger native OS folder picker dialog and return inspected item."""
+    folder = open_native_folder_dialog()
+    if folder:
+        inspection = inspect_evidence_selection([folder])
+        item = inspection["items"][0] if inspection["items"] else None
+        return {"cancelled": False, "path": folder, "item": item}
+    return {"cancelled": True, "path": None, "item": None}
+
+
+@app.post("/api/dialog/files")
+def select_files_dialog():
+    """Trigger native OS file picker dialog supporting multi-selection."""
+    files = open_native_files_dialog()
+    if files:
+        inspection = inspect_evidence_selection(files)
+        return {"cancelled": False, "paths": files, "items": inspection["items"]}
+    return {"cancelled": True, "paths": [], "items": []}
+
+
+@app.post("/api/evidence/preview")
+def preview_evidence_selection(req: EvidencePreviewRequest):
+    """Inspect and preview an arbitrary selection of evidence files and folders."""
+    return inspect_evidence_selection(req.items)
+
+
+# ──────────────────────────────────────────────
+# Dynamic Background Investigation
+# ──────────────────────────────────────────────
+
+@app.post("/api/investigate/start")
+def start_investigation(req: InvestigateRequest):
+    """
+    Launch real-time background forensic investigation across selected files/folders.
+    Returns the unique job_id.
+    """
+    if not req.items:
+        raise HTTPException(status_code=400, detail="No evidence files or folders selected.")
+
+    existing = [p for p in req.items if Path(p).exists()]
+    if not existing:
+        raise HTTPException(status_code=400, detail="None of the selected evidence paths exist.")
+
+    try:
+        job_id = investigation_manager.start(req.items, req.output_dir)
+        return {
+            "success": True,
+            "job_id": job_id,
+            "message": f"Forensic investigation initiated across {len(existing)} evidence locations.",
+        }
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.get("/api/investigate/progress")
+def get_investigation_progress():
+    """
+    Retrieve live progress metrics for active or recently completed investigation.
+    Automatically synchronizes global active scan state when completed.
+    """
+    global _active_scan, _active_findings
+    prog = investigation_manager.get_progress()
+    if prog["status"] == "completed" and investigation_manager.active_scan:
+        _active_scan = investigation_manager.active_scan
+        _active_findings = investigation_manager.active_findings
+    return prog
+
+
+# ──────────────────────────────────────────────
+# Scanning & Reports (Synchronous / Legacy CLI compatible)
 # ──────────────────────────────────────────────
 
 @app.post("/api/scan")
 def trigger_scan(req: ScanRequest):
     global _active_scan, _active_findings
-    target_path = Path(req.directory).resolve()
 
-    if not target_path.exists():
-        raise HTTPException(status_code=400, detail=f"Directory does not exist: {target_path}")
-    if not target_path.is_dir():
-        raise HTTPException(status_code=400, detail=f"Target path is not a directory: {target_path}")
+    if req.items:
+        items = [Path(p).resolve() for p in req.items]
+        missing = [str(p) for p in items if not p.exists()]
+        if len(missing) == len(items):
+            raise HTTPException(status_code=400, detail=f"None of the selected items exist: {missing}")
+        file_records = list(scan_evidence_selection(items))
+        total_folders = count_selected_directories(items)
+        target_display = str(items[0]) if len(items) == 1 else f"{len(items)} selected evidence locations"
+        selected_paths = [str(p) for p in items]
+    else:
+        if not req.directory:
+            raise HTTPException(status_code=400, detail="No directory or items specified to scan.")
+        target_path = Path(req.directory).resolve()
+        if not target_path.exists():
+            raise HTTPException(status_code=400, detail=f"Directory does not exist: {target_path}")
+        if not target_path.is_dir():
+            raise HTTPException(status_code=400, detail=f"Target path is not a directory: {target_path}")
+
+        file_records = list(scan_directory(target_path))
+        total_folders = count_directories(target_path)
+        target_display = str(target_path)
+        selected_paths = [str(target_path)]
 
     output_dir = Path(req.output_dir)
     scan_t0 = time.perf_counter()
-
-    try:
-        file_records = list(scan_directory(target_path))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error scanning directory: {exc}")
-
-    # Count subdirectories
-    total_folders = count_directories(target_path)
 
     # Compute SHA-256 for each accessible file
     hashed = 0
@@ -161,7 +256,7 @@ def trigger_scan(req: ScanRequest):
     total_bytes = 0
     for record in file_records:
         total_bytes += record.get("size_bytes", 0)
-        if record["accessible"]:
+        if record.get("accessible"):
             sha = compute_sha256(record["absolute_path"])
             record["sha256"] = sha
             record["scan_status"] = "hashed" if sha else "hash_failed"
@@ -194,14 +289,15 @@ def trigger_scan(req: ScanRequest):
     json_path = save_json_report(
         file_records=file_records,
         duplicate_groups=duplicate_groups,
-        directory=str(target_path),
+        directory=target_display,
         output_dir=output_dir,
         findings=_active_findings,
         performance_metrics=perf_metrics,
         total_folders=total_folders,
+        selected_paths=selected_paths,
     )
     save_csv_report(file_records, output_dir)
-    save_baseline(file_records, str(target_path), output_dir)
+    save_baseline(file_records, target_display, output_dir)
 
     with json_path.open("r", encoding="utf-8") as f:
         _active_scan = json.load(f)
@@ -226,7 +322,8 @@ def trigger_scan(req: ScanRequest):
         "success": True,
         "message": f"Successfully analyzed {len(file_records)} files across {total_folders} subdirectories.",
         "summary": {
-            "directory": str(target_path),
+            "directory": target_display,
+            "selected_paths": selected_paths,
             "total_files": len(file_records),
             "total_folders": total_folders,
             "total_bytes": total_bytes,

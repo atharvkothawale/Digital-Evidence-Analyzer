@@ -86,23 +86,32 @@ def cmd_scan(args: argparse.Namespace) -> int:
         0 on success, 1 on critical error.
     """
     print_banner()
-    directory = Path(args.directory).resolve()
+    raw_targets = getattr(args, "targets", None) or [args.directory]
+    targets = [Path(t).resolve() for t in raw_targets]
     output_dir = Path(args.output)
 
-    print(f"  Directory  : {directory}")
+    if len(targets) == 1:
+        print(f"  Target     : {targets[0]}")
+    else:
+        print(f"  Targets    : {len(targets)} selected evidence locations")
+        for t in targets[:3]:
+            print(f"               - {t}")
+        if len(targets) > 3:
+            print(f"               - ... and {len(targets) - 3} more")
     print(f"  Output     : {output_dir}")
     print_separator()
     print("  Scanning files ...\n")
 
     # ── 1. Scan ──────────────────────────────
+    from defa.scanner import scan_evidence_selection, count_selected_directories
     try:
-        file_records = list(scan_directory(directory))
+        file_records = list(scan_evidence_selection(targets))
     except (FileNotFoundError, NotADirectoryError) as exc:
         print(f"\n  [ERROR] {exc}")
         return 1
 
     if not file_records:
-        print("  No files found in the specified directory.")
+        print("  No files found in the specified evidence selection.")
         return 0
 
     # ── 2. Hash each file ────────────────────
@@ -134,17 +143,21 @@ def cmd_scan(args: argparse.Namespace) -> int:
     findings = generate_forensic_findings(file_records, duplicate_groups)
 
     # ── 5. Generate reports ──────────────────
-    total_folders = count_directories(directory)
+    total_folders = count_selected_directories(targets)
+    target_display = str(targets[0]) if len(targets) == 1 else f"{len(targets)} selected evidence locations"
+    selected_paths = [str(t) for t in targets]
+
     json_path = save_json_report(
         file_records=file_records,
         duplicate_groups=duplicate_groups,
-        directory=str(directory),
+        directory=target_display,
         output_dir=output_dir,
         findings=findings,
         total_folders=total_folders,
+        selected_paths=selected_paths,
     )
     csv_path = save_csv_report(file_records, output_dir)
-    baseline_path = save_baseline(file_records, str(directory), output_dir)
+    baseline_path = save_baseline(file_records, target_display, output_dir)
     
     # Generate PDF report
     pdf_path = output_dir / "investigation_report.pdf"
@@ -152,7 +165,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
         generate_pdf_report(
             case_name="DEMO-INVESTIGATION",
             investigator="Forensic Examiner",
-            scan_report={"directory": str(directory), "total_files": len(file_records), "files": file_records, "hashed_successfully": hashed, "hash_failed": failed, "duplicate_groups": len(duplicate_groups), "duplicate_files": sum(len(g) for g in duplicate_groups)},
+            scan_report={"directory": target_display, "total_files": len(file_records), "files": file_records, "hashed_successfully": hashed, "hash_failed": failed, "duplicate_groups": len(duplicate_groups), "duplicate_files": sum(len(g) for g in duplicate_groups)},
             findings=findings,
             output_path=pdf_path,
         )
@@ -202,11 +215,15 @@ def cmd_verify(args: argparse.Namespace) -> int:
         0 on success, 1 on critical error.
     """
     print_banner()
-    directory = Path(args.directory).resolve()
+    raw_targets = getattr(args, "targets", None) or [args.directory]
+    targets = [Path(t).resolve() for t in raw_targets]
     baseline_path = Path(args.baseline)
     output_dir = Path(args.output)
 
-    print(f"  Directory  : {directory}")
+    if len(targets) == 1:
+        print(f"  Target     : {targets[0]}")
+    else:
+        print(f"  Targets    : {len(targets)} selected evidence locations")
     print(f"  Baseline   : {baseline_path}")
     print(f"  Output     : {output_dir}")
     print_separator()
@@ -219,11 +236,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
         return 1
 
     print(f"  Baseline created at: {baseline.get('scanned_at', 'unknown')}\n")
-    print("  Re-scanning directory ...")
+    print("  Re-scanning evidence ...")
 
     # ── 2. Rescan + hash ─────────────────────
+    from defa.scanner import scan_evidence_selection
     try:
-        current_records = list(scan_directory(directory))
+        current_records = list(scan_evidence_selection(targets))
     except (FileNotFoundError, NotADirectoryError) as exc:
         print(f"\n  [ERROR] {exc}")
         return 1
@@ -383,8 +401,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Scan a directory for forensic analysis.",
     )
     scan_parser.add_argument(
-        "directory",
-        help="Path to the directory to scan.",
+        "targets",
+        nargs="+",
+        metavar="PATH",
+        help="Path(s) to directory, folder(s), or individual file(s) to scan.",
     )
     scan_parser.add_argument(
         "--output", "-o",
@@ -400,8 +420,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Verify file integrity against a known-good baseline.",
     )
     verify_parser.add_argument(
-        "directory",
-        help="Path to the directory to re-scan.",
+        "targets",
+        nargs="+",
+        metavar="PATH",
+        help="Path(s) to directory, folder(s), or file(s) to re-scan.",
     )
     verify_parser.add_argument(
         "--baseline", "-b",

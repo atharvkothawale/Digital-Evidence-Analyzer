@@ -780,27 +780,132 @@
     </div>
   </div>
 
-  <!-- Scan Modal -->
+  <!-- Evidence Selection & Investigation Modal -->
   <div class="modal-backdrop" id="scan-modal">
-    <div class="modal-box" style="max-width: 520px;">
+    <div class="modal-box" style="max-width: 860px; width: 95%;">
       <div class="modal-header">
-        <span class="modal-title">Select Evidence Directory</span>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span style="font-size: 1.2rem;">📂</span>
+          <span class="modal-title">Dynamic Evidence Selection & Investigation</span>
+        </div>
         <button class="modal-close" id="btn-close-scan-modal">&times;</button>
       </div>
       <div class="modal-body">
-        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
-          Enter the relative or absolute path of the target evidence folder. All files will be cataloged, hashed, and checked for anomalies without modifying original evidence.
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem; line-height: 1.5;">
+          Select any directories, individual files, or mixed evidence from your computer. Hierarchical overlaps are automatically deduplicated. Original evidence files are strictly accessed in binary read-only mode (<code style="color: var(--accent-blue);">rb</code>) and are <strong>never altered, moved, or deleted</strong>.
         </p>
 
-        <div style="margin-bottom: 1rem;">
-          <label style="display: block; font-size: 0.85rem; margin-bottom: 0.4rem; color: var(--text-muted);">Directory Path:</label>
-          <input type="text" id="scan-dir-input" class="search-input" style="width: 100%;" placeholder="./sample_data" value="./sample_data">
+        <!-- Selection Toolbar -->
+        <div class="evidence-toolbar">
+          <button class="btn-primary" id="btn-pick-folder" type="button">
+            <span>📁</span> Select Folder
+          </button>
+          <button class="btn-primary" id="btn-pick-files" type="button" style="background: #238636;">
+            <span>📄</span> Select Files
+          </button>
+          
+          <div style="display: flex; gap: 0.4rem; flex: 1; min-width: 250px;">
+            <input type="text" id="manual-path-input" class="search-input" placeholder="Enter folder or file path (e.g. C:\evidence or D:\cases\sample)..." style="flex: 1;">
+            <button class="btn-secondary" id="btn-add-manual-path" type="button">+ Add</button>
+          </div>
+
+          <button class="btn-secondary" id="btn-preset-sample" type="button" title="Load sample dataset for demo">
+            Demo Sample Data
+          </button>
+          <button class="btn-secondary" id="btn-clear-staged" type="button" style="color: var(--accent-red);" title="Clear all staged items">
+            🗑️ Clear All
+          </button>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem;">
-          <button class="btn-secondary" id="btn-preset-sample">Use Sample Data</button>
-          <button class="btn-primary" id="btn-start-scan">Start Forensic Scan</button>
+        <!-- Overlap & Notice Alert (Hidden by default) -->
+        <div id="staged-overlap-alert" class="callout callout-warning" style="display: none; margin-bottom: 0.8rem; font-size: 0.8rem;"></div>
+
+        <!-- Staged Evidence Summary Bar -->
+        <div class="evidence-summary-bar">
+          <div>
+            <strong>Staged Evidence:</strong> <span id="staged-count-badge">0 items</span>
+          </div>
+          <div>
+            Est. Files: <strong id="staged-files-badge" style="color: var(--text-bright);">0</strong> &nbsp;|&nbsp; 
+            Est. Size: <strong id="staged-size-badge" style="color: var(--accent-blue);">0 B</strong>
+          </div>
         </div>
+
+        <!-- Staged Evidence Table / List -->
+        <div class="evidence-table-container">
+          <div id="staged-empty-placeholder" class="evidence-empty-placeholder">
+            <div style="font-size: 1.5rem; margin-bottom: 0.4rem;">📁</div>
+            <div>No evidence selected yet.</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem;">
+              Click <strong>Select Folder</strong>, <strong>Select Files</strong>, or paste any file/folder path above.
+            </div>
+          </div>
+          <div id="staged-list-container" style="display: none;"></div>
+        </div>
+
+        <!-- Start Investigation Action -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+          <div style="font-size: 0.78rem; color: var(--text-muted);">
+            Report Destination: <code class="mono">reports/</code> (JSON, CSV, Baseline, PDF)
+          </div>
+          <div style="display: flex; gap: 0.6rem;">
+            <button class="btn-secondary" id="btn-cancel-scan-modal" type="button">Cancel</button>
+            <button class="btn-primary" id="btn-start-investigation" type="button" style="font-weight: 700;">
+              <span>🚀</span> Start Forensic Investigation
+            </button>
+          </div>
+        </div>
+
+        <!-- Live Investigation Progress Panel -->
+        <div id="investigation-progress-box" class="investigation-progress-box" style="display: none;">
+          <div class="progress-header-row">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span class="badge badge-info" id="prog-status-badge">INITIALIZING SCAN...</span>
+              <span id="prog-current-phase" style="font-size: 0.82rem; color: var(--text-bright); font-weight: 600;">Phase 1: Recursive File Discovery</span>
+            </div>
+            <span class="mono" id="prog-percentage-badge" style="font-size: 1rem; font-weight: 800; color: var(--accent-blue);">0%</span>
+          </div>
+
+          <!-- Progress Bar -->
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="prog-bar-fill"></div>
+          </div>
+
+          <!-- Current File Ticker -->
+          <div class="progress-ticker">
+            <span class="ticker-pulse"></span>
+            <span id="prog-ticker-text">Scanning evidence structure...</span>
+          </div>
+
+          <!-- Real-Time Metric Counters -->
+          <div class="progress-stats-grid">
+            <div class="progress-stat-pill">
+              <div class="progress-stat-label">Discovered</div>
+              <div class="progress-stat-val" id="prog-val-discovered">0</div>
+            </div>
+            <div class="progress-stat-pill">
+              <div class="progress-stat-label">Processed</div>
+              <div class="progress-stat-val" id="prog-val-processed">0</div>
+            </div>
+            <div class="progress-stat-pill">
+              <div class="progress-stat-label">Remaining</div>
+              <div class="progress-stat-val" id="prog-val-remaining">0</div>
+            </div>
+            <div class="progress-stat-pill">
+              <div class="progress-stat-label">Hashed OK</div>
+              <div class="progress-stat-val" id="prog-val-hashed" style="color: var(--accent-green);">0</div>
+            </div>
+            <div class="progress-stat-pill">
+              <div class="progress-stat-label">Failed / Locked</div>
+              <div class="progress-stat-val" id="prog-val-failed" style="color: var(--accent-red);">0</div>
+            </div>
+            <div class="progress-stat-pill">
+              <div class="progress-stat-label">Throughput</div>
+              <div class="progress-stat-val" id="prog-val-throughput" style="color: var(--accent-blue);">0 MB/s</div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>

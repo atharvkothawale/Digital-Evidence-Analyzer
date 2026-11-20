@@ -32,9 +32,16 @@ from defa.api.routes import (
     get_settings,
     update_settings,
     export_report,
+    select_folder_dialog,
+    select_files_dialog,
+    preview_evidence_selection,
+    start_investigation,
+    get_investigation_progress,
 )
 from defa.api.schemas import (
     ScanRequest,
+    EvidencePreviewRequest,
+    InvestigateRequest,
     VerifyRequest,
     ChatRequest,
     ChatMessage,
@@ -170,6 +177,56 @@ class TestAPIEndpoints(unittest.TestCase):
         with self.assertRaises(HTTPException) as ctx:
             export_report(report_type="unsupported_format")
         self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_preview_evidence_selection_endpoint(self):
+        req = EvidencePreviewRequest(items=[str(self.sample_dir)])
+        res = preview_evidence_selection(req)
+        self.assertIn("items", res)
+        self.assertEqual(res["total_items"], 1)
+        self.assertGreater(res["total_estimated_files"], 0)
+        self.assertGreater(res["total_estimated_size_bytes"], 0)
+
+    def test_start_investigation_and_progress_endpoint(self):
+        req = InvestigateRequest(items=[str(self.sample_dir)], output_dir="reports")
+        start_res = start_investigation(req)
+        self.assertTrue(start_res["success"])
+        self.assertIn("job_id", start_res)
+
+        # Query progress endpoint
+        prog = get_investigation_progress()
+        self.assertIn("status", prog)
+        self.assertIn("files_discovered", prog)
+        self.assertIn("progress_percent", prog)
+
+    def test_start_investigation_empty_items_raises_400(self):
+        req = InvestigateRequest(items=[])
+        with self.assertRaises(HTTPException) as ctx:
+            start_investigation(req)
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    @patch("defa.api.routes.open_native_folder_dialog")
+    def test_dialog_folder_endpoint(self, mock_dialog):
+        mock_dialog.return_value = str(self.sample_dir)
+        res = select_folder_dialog()
+        self.assertFalse(res["cancelled"])
+        self.assertEqual(res["path"], str(self.sample_dir))
+
+    @patch("defa.api.routes.open_native_files_dialog")
+    def test_dialog_files_endpoint(self, mock_dialog):
+        existing_files = [str(f) for f in self.sample_dir.rglob("*") if f.is_file()]
+        mock_file = existing_files[0] if existing_files else str(self.sample_dir)
+        mock_dialog.return_value = [mock_file]
+        res = select_files_dialog()
+        self.assertFalse(res["cancelled"])
+        self.assertEqual(res["paths"], [mock_file])
+
+    def test_scan_with_dynamic_items(self):
+        existing_files = [str(f) for f in self.sample_dir.rglob("*") if f.is_file()]
+        targets = existing_files[:2] if len(existing_files) >= 2 else [str(self.sample_dir)]
+        req = ScanRequest(items=targets, output_dir="reports")
+        data = trigger_scan(req)
+        self.assertTrue(data["success"])
+        self.assertGreater(data["summary"]["total_files"], 0)
 
 
 if __name__ == "__main__":

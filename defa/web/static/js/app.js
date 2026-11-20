@@ -11,6 +11,8 @@ const state = {
   activeVerification: null,
   activeFindings: [],
   findingsFilter: 'all',
+  stagedEvidence: [],
+  investigationPollingInterval: null,
   aiStatus: { online: false, version: null, current_model: 'llama3.2', installed_models: [] },
   chatMessages: [],
   fileFilters: {
@@ -90,26 +92,66 @@ function switchTab(tabId) {
 }
 
 function setupEventListeners() {
-  // New Scan modal
+  // Evidence Selection Modal
   const openScanBtn = document.getElementById('btn-open-scan-modal');
   const closeScanBtn = document.getElementById('btn-close-scan-modal');
+  const cancelScanBtn = document.getElementById('btn-cancel-scan-modal');
   const scanModal = document.getElementById('scan-modal');
-  const startScanBtn = document.getElementById('btn-start-scan');
-  const sampleDataPresetBtn = document.getElementById('btn-preset-sample');
 
   if (openScanBtn && scanModal) {
-    openScanBtn.addEventListener('click', () => scanModal.classList.add('active'));
+    openScanBtn.addEventListener('click', () => {
+      scanModal.classList.add('active');
+      if (state.stagedEvidence.length === 0) {
+        // Pre-load sample data if nothing is staged yet
+        loadSamplePreset(false);
+      }
+    });
   }
   if (closeScanBtn && scanModal) {
     closeScanBtn.addEventListener('click', () => scanModal.classList.remove('active'));
   }
-  if (sampleDataPresetBtn) {
-    sampleDataPresetBtn.addEventListener('click', () => {
-      document.getElementById('scan-dir-input').value = './sample_data';
+  if (cancelScanBtn && scanModal) {
+    cancelScanBtn.addEventListener('click', () => scanModal.classList.remove('active'));
+  }
+
+  // Dynamic selection buttons
+  const pickFolderBtn = document.getElementById('btn-pick-folder');
+  if (pickFolderBtn) {
+    pickFolderBtn.addEventListener('click', pickNativeFolder);
+  }
+
+  const pickFilesBtn = document.getElementById('btn-pick-files');
+  if (pickFilesBtn) {
+    pickFilesBtn.addEventListener('click', pickNativeFiles);
+  }
+
+  const addManualPathBtn = document.getElementById('btn-add-manual-path');
+  const manualPathInput = document.getElementById('manual-path-input');
+  if (addManualPathBtn) {
+    addManualPathBtn.addEventListener('click', addManualPath);
+  }
+  if (manualPathInput) {
+    manualPathInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addManualPath();
+      }
     });
   }
-  if (startScanBtn) {
-    startScanBtn.addEventListener('click', executeScan);
+
+  const sampleDataPresetBtn = document.getElementById('btn-preset-sample');
+  if (sampleDataPresetBtn) {
+    sampleDataPresetBtn.addEventListener('click', () => loadSamplePreset(true));
+  }
+
+  const clearStagedBtn = document.getElementById('btn-clear-staged');
+  if (clearStagedBtn) {
+    clearStagedBtn.addEventListener('click', clearStagedEvidence);
+  }
+
+  const startInvestBtn = document.getElementById('btn-start-investigation');
+  if (startInvestBtn) {
+    startInvestBtn.addEventListener('click', startDynamicInvestigation);
   }
 
   // File detail modal close
@@ -987,41 +1029,316 @@ function clearChat() {
 }
 
 // ──────────────────────────────────────────────
-// Interactive Scan Execution
+// Dynamic Evidence Selection & Real-Time Investigation
 // ──────────────────────────────────────────────
 
-async function executeScan() {
-  const dirInput = document.getElementById('scan-dir-input');
-  const dir = dirInput.value.trim() || './sample_data';
-  const btn = document.getElementById('btn-start-scan');
-
+async function pickNativeFolder() {
+  const btn = document.getElementById('btn-pick-folder');
+  const originalText = btn.innerHTML;
   btn.disabled = true;
-  btn.textContent = 'Scanning Evidence...';
+  btn.innerHTML = '<span>⏳</span> Opening Folder Dialog...';
 
   try {
-    const res = await fetch('/api/scan', {
+    const res = await fetch('/api/dialog/folder', { method: 'POST' });
+    const data = await res.json();
+    if (!data.cancelled && data.path) {
+      addStagedPath(data.path);
+    }
+  } catch (err) {
+    alert(`Error opening folder dialog: ${err}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  }
+}
+
+async function pickNativeFiles() {
+  const btn = document.getElementById('btn-pick-files');
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span>⏳</span> Opening File Dialog...';
+
+  try {
+    const res = await fetch('/api/dialog/files', { method: 'POST' });
+    const data = await res.json();
+    if (!data.cancelled && data.paths && data.paths.length > 0) {
+      data.paths.forEach(p => addStagedPath(p));
+    }
+  } catch (err) {
+    alert(`Error opening files dialog: ${err}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  }
+}
+
+async function addManualPath() {
+  const input = document.getElementById('manual-path-input');
+  const rawPath = input.value.trim();
+  if (!rawPath) {
+    alert('Please enter a valid directory or file path.');
+    return;
+  }
+
+  const added = addStagedPath(rawPath);
+  if (added) {
+    input.value = '';
+  }
+}
+
+async function loadSamplePreset(notify = true) {
+  const samplePath = './sample_data';
+  const added = addStagedPath(samplePath);
+  if (notify && !added) {
+    alert('Sample data is already staged.');
+  }
+}
+
+function addStagedPath(pathStr) {
+  const normalized = pathStr.trim();
+  if (!normalized) return false;
+
+  // Prevent duplicate additions
+  if (state.stagedEvidence.includes(normalized)) {
+    alert(`'${normalized}' is already in your selected evidence list.`);
+    return false;
+  }
+
+  state.stagedEvidence.push(normalized);
+  previewStagedEvidence();
+  return true;
+}
+
+function removeStagedItem(index) {
+  if (index >= 0 && index < state.stagedEvidence.length) {
+    state.stagedEvidence.splice(index, 1);
+    previewStagedEvidence();
+  }
+}
+
+function clearStagedEvidence() {
+  state.stagedEvidence = [];
+  previewStagedEvidence();
+}
+
+async function previewStagedEvidence() {
+  const placeholder = document.getElementById('staged-empty-placeholder');
+  const listContainer = document.getElementById('staged-list-container');
+  const countBadge = document.getElementById('staged-count-badge');
+  const filesBadge = document.getElementById('staged-files-badge');
+  const sizeBadge = document.getElementById('staged-size-badge');
+  const overlapAlert = document.getElementById('staged-overlap-alert');
+
+  if (!placeholder || !listContainer) return;
+
+  if (state.stagedEvidence.length === 0) {
+    placeholder.style.display = 'block';
+    listContainer.style.display = 'none';
+    listContainer.innerHTML = '';
+    countBadge.textContent = '0 items';
+    filesBadge.textContent = '0';
+    sizeBadge.textContent = '0 B';
+    if (overlapAlert) overlapAlert.style.display = 'none';
+    return;
+  }
+
+  placeholder.style.display = 'none';
+  listContainer.style.display = 'block';
+  listContainer.innerHTML = '<div style="padding: 1rem; color: var(--text-muted); font-size: 0.8rem;">Analyzing selected evidence paths...</div>';
+
+  try {
+    const res = await fetch('/api/evidence/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ directory: dir, output_dir: 'reports' }),
+      body: JSON.stringify({ items: state.stagedEvidence }),
+    });
+    const preview = await res.json();
+
+    countBadge.textContent = `${preview.total_items} item${preview.total_items === 1 ? '' : 's'}`;
+    filesBadge.textContent = preview.total_estimated_files.toLocaleString();
+    sizeBadge.textContent = formatBytes(preview.total_estimated_size_bytes);
+
+    if (overlapAlert) {
+      if (preview.warnings && preview.warnings.length > 0) {
+        overlapAlert.style.display = 'block';
+        overlapAlert.innerHTML = `<strong>⚠️ Overlapping Selections Detected:</strong><br>${preview.warnings.map(w => `• ${w}`).join('<br>')}`;
+      } else {
+        overlapAlert.style.display = 'none';
+      }
+    }
+
+    let html = '';
+    preview.items.forEach((item, idx) => {
+      const isFolder = item.type === 'folder';
+      const icon = isFolder ? '📁' : '📄';
+      const typeBadge = isFolder
+        ? '<span class="badge badge-info">FOLDER</span>'
+        : '<span class="badge badge-purple">FILE</span>';
+      const existsBadge = item.exists
+        ? '<span class="badge badge-success">READY</span>'
+        : '<span class="badge badge-danger">NOT FOUND</span>';
+
+      html += `
+        <div class="evidence-row-item">
+          <div class="evidence-row-left">
+            <span style="font-size: 1.1rem;">${icon}</span>
+            <div>
+              <div style="font-weight: 600; color: var(--text-bright);">${item.name} ${typeBadge} ${existsBadge}</div>
+              <div class="evidence-path-text" title="${item.path}">${item.path}</div>
+            </div>
+          </div>
+          <div class="evidence-row-right">
+            <span class="mono" style="font-size: 0.78rem; color: var(--text-muted);">
+              ${item.estimated_files} file${item.estimated_files === 1 ? '' : 's'} (${formatBytes(item.estimated_size_bytes)})
+            </span>
+            <button class="btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; color: var(--accent-red);" onclick="removeStagedItem(${idx})" title="Remove from selection">
+              ❌ Remove
+            </button>
+          </div>
+        </div>
+      `;
+    });
+    listContainer.innerHTML = html;
+  } catch (err) {
+    console.error('Error previewing evidence:', err);
+    listContainer.innerHTML = `<div style="padding: 1rem; color: var(--accent-red); font-size: 0.8rem;">Error inspecting evidence: ${err}</div>`;
+  }
+}
+
+async function startDynamicInvestigation() {
+  if (state.stagedEvidence.length === 0) {
+    alert('Please select at least one folder or file to investigate.');
+    return;
+  }
+
+  const startBtn = document.getElementById('btn-start-investigation');
+  startBtn.disabled = true;
+  startBtn.innerHTML = '<span>⏳</span> Starting...';
+
+  const progressBox = document.getElementById('investigation-progress-box');
+  progressBox.style.display = 'block';
+
+  // Reset progress UI
+  document.getElementById('prog-bar-fill').style.width = '0%';
+  document.getElementById('prog-percentage-badge').textContent = '0%';
+  document.getElementById('prog-status-badge').className = 'badge badge-info';
+  document.getElementById('prog-status-badge').textContent = 'DISCOVERING';
+  document.getElementById('prog-current-phase').textContent = 'Phase 1: Discovering files across evidence locations...';
+  document.getElementById('prog-ticker-text').textContent = 'Starting file traversal...';
+  document.getElementById('prog-val-discovered').textContent = '0';
+  document.getElementById('prog-val-processed').textContent = '0';
+  document.getElementById('prog-val-remaining').textContent = '0';
+  document.getElementById('prog-val-hashed').textContent = '0';
+  document.getElementById('prog-val-failed').textContent = '0';
+  document.getElementById('prog-val-throughput').textContent = '0 MB/s';
+
+  try {
+    const res = await fetch('/api/investigate/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: state.stagedEvidence,
+        output_dir: 'reports',
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
-      alert(`Scan failed: ${data.detail || 'Unknown error'}`);
+      alert(`Could not start investigation: ${data.detail || 'Unknown error'}`);
+      progressBox.style.display = 'none';
+      startBtn.disabled = false;
+      startBtn.innerHTML = '<span>🚀</span> Start Forensic Investigation';
       return;
     }
 
-    document.getElementById('scan-modal').classList.remove('active');
-    alert(`Evidence scan complete! Analyzed ${data.summary.total_files} files across ${data.summary.total_folders} subdirectories.`);
-    await loadOverview();
-    await loadFindings();
-    if (state.currentTab === 'files') loadFiles();
-    if (state.currentTab === 'duplicates') loadDuplicates();
+    // Begin polling progress
+    pollInvestigationProgress();
   } catch (err) {
-    alert(`Network error during scan: ${err}`);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Start Forensic Scan';
+    alert(`Network error starting investigation: ${err}`);
+    progressBox.style.display = 'none';
+    startBtn.disabled = false;
+    startBtn.innerHTML = '<span>🚀</span> Start Forensic Investigation';
   }
+}
+
+function pollInvestigationProgress() {
+  if (state.investigationPollingInterval) {
+    clearInterval(state.investigationPollingInterval);
+  }
+
+  const startBtn = document.getElementById('btn-start-investigation');
+
+  state.investigationPollingInterval = setInterval(async () => {
+    try {
+      const res = await fetch('/api/investigate/progress');
+      if (!res.ok) return;
+      const prog = await res.json();
+
+      const pct = prog.progress_percent || 0;
+      document.getElementById('prog-bar-fill').style.width = `${pct}%`;
+      document.getElementById('prog-percentage-badge').textContent = `${pct}%`;
+
+      document.getElementById('prog-val-discovered').textContent = prog.files_discovered || 0;
+      document.getElementById('prog-val-processed').textContent = prog.files_processed || 0;
+      document.getElementById('prog-val-remaining').textContent = prog.files_remaining || 0;
+      document.getElementById('prog-val-hashed').textContent = prog.hashed_ok || 0;
+      document.getElementById('prog-val-failed').textContent = prog.hash_failed || 0;
+      document.getElementById('prog-val-throughput').textContent = `${prog.throughput_mb_s || 0} MB/s`;
+
+      if (prog.current_file) {
+        document.getElementById('prog-ticker-text').textContent = prog.current_file;
+      }
+
+      if (prog.status === 'discovering') {
+        document.getElementById('prog-status-badge').className = 'badge badge-info';
+        document.getElementById('prog-status-badge').textContent = 'DISCOVERING';
+        document.getElementById('prog-current-phase').textContent = 'Phase 1: Recursive File Discovery';
+      } else if (prog.status === 'hashing') {
+        document.getElementById('prog-status-badge').className = 'badge badge-warning';
+        document.getElementById('prog-status-badge').textContent = 'HASHING SHA-256';
+        document.getElementById('prog-current-phase').textContent = `Phase 2: Chunk-Based Hashing (${prog.files_processed} / ${prog.files_discovered})`;
+      } else if (prog.status === 'analyzing') {
+        document.getElementById('prog-status-badge').className = 'badge badge-purple';
+        document.getElementById('prog-status-badge').textContent = 'ANALYZING';
+        document.getElementById('prog-current-phase').textContent = 'Phase 3: Anomaly Detection & Reporting';
+      } else if (prog.status === 'completed') {
+        clearInterval(state.investigationPollingInterval);
+        state.investigationPollingInterval = null;
+
+        document.getElementById('prog-bar-fill').style.width = '100%';
+        document.getElementById('prog-bar-fill').style.background = 'var(--accent-green)';
+        document.getElementById('prog-percentage-badge').textContent = '100%';
+        document.getElementById('prog-status-badge').className = 'badge badge-success';
+        document.getElementById('prog-status-badge').textContent = 'COMPLETED';
+        document.getElementById('prog-current-phase').textContent = 'Investigation Complete! All reports generated.';
+        document.getElementById('prog-ticker-text').textContent = `Analyzed ${prog.files_processed} files in ${prog.duration_seconds}s (${prog.throughput_mb_s} MB/s).`;
+
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<span>🚀</span> Start Another Investigation';
+
+        // Refresh all dashboard tabs with new investigation findings
+        await loadOverview();
+        await loadFindings();
+        if (state.currentTab === 'files') loadFiles();
+        if (state.currentTab === 'duplicates') loadDuplicates();
+
+        setTimeout(() => {
+          const scanModal = document.getElementById('scan-modal');
+          if (scanModal) scanModal.classList.remove('active');
+        }, 1500);
+      } else if (prog.status === 'error') {
+        clearInterval(state.investigationPollingInterval);
+        state.investigationPollingInterval = null;
+
+        document.getElementById('prog-status-badge').className = 'badge badge-danger';
+        document.getElementById('prog-status-badge').textContent = 'ERROR';
+        document.getElementById('prog-current-phase').textContent = `Failed: ${prog.error || 'Unknown error'}`;
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<span>🚀</span> Retry Investigation';
+      }
+    } catch (err) {
+      console.warn('Progress poll error:', err);
+    }
+  }, 250);
 }
 
 // ──────────────────────────────────────────────
